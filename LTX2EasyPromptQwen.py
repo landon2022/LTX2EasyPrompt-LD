@@ -407,6 +407,10 @@ def _build_negative_prompt(result: str, user_input: str, is_portrait: bool = Fal
         extras.append(_NEG_GRAVURE)
 
     parts = [p for p in [_NEG_BASE] + extras if p.strip()]
+    # Femdom style preset — suppress softness, gentleness, romantic tones
+    if "femdom" in style_preset.lower() or "verbal domination" in style_preset.lower():
+        extras.append("soft lighting, romantic, gentle, tender, sweet, loving, equal power, soft expression, warm smile, affectionate")
+
     return ", ".join(parts)
 
 
@@ -1075,6 +1079,15 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
             "Dialogue is minimal — one to three short phrases maximum. No dramatic monologue. No heavy music unless the user explicitly asks. "
             "SCOPE NOTE: This style sets aesthetic, posing, and framing only. "
             "Do NOT add nudity, explicit acts, or content the user did not describe.", False),
+        "Femdom — verbal domination": (
+            "STYLE: Femdom verbal domination. She is the only power in the room. "
+            "Camera worships her — low angle looking up, slow orbital arc, close-up on her expression of contempt. "
+            "She wears structured leather, latex, or a tailored open blazer over lingerie. Thigh-high boots or patent heels. "
+            "Hard directional lighting — one side of her face in clean harsh light, one in shadow. "
+            "The subject if present is always lower in frame, always smaller. "
+            "Her voice is the dominant sound — every consonant audible, the room quiet so each word lands. "
+            "She does not shout. The control is in the precision and the calm. "
+            "FORBIDDEN: softness, uncertainty, the dominant losing composure.", True),
         "Amateur — naturalistic, raw": (
             "STYLE: Amateur home video aesthetic. Slightly overexposed. Natural indoor lighting — lamps, overhead. "
             "Camera is handheld and slightly uncertain. No cinematic framing. "
@@ -1238,6 +1251,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         "Voyeur — handheld, observational":         30,
         "Softcore editorial — lingerie-adjacent":   24,
         "Gravure Idol — Japanese glamour":             30,
+        "Femdom — verbal domination":               50,
         "Amateur — naturalistic, raw":              30,
         "Action blockbuster":                       30,
         "Sports documentary":                       30,
@@ -1276,6 +1290,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         "Voyeur — handheld, observational":         "Voyeuristic handheld footage.",
         "Softcore editorial — lingerie-adjacent":   "Softcore editorial, fashion magazine aesthetic.",
         "Gravure Idol — Japanese glamour":             "Japanese gravure idol, bright glossy glamour.",
+        "Femdom — verbal domination":              "Low angle, leather and latex, hard directional light, female dominant, verbal domination scene.",
         "Amateur — naturalistic, raw":              "Amateur home video, naturalistic.",
         "Action blockbuster":                       "Action blockbuster, teal and orange grade.",
         "Sports documentary":                       "Sports documentary footage.",
@@ -1317,6 +1332,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         "Voyeur — handheld, observational":        ("Low angle — powerful, imposing",  "Handheld — natural shake"),
         "Softcore editorial — lingerie-adjacent":  ("Low angle — powerful, imposing",  "Slow push in"),
         "Gravure Idol — Japanese glamour":         ("Low angle — powerful, imposing",  "Tilt up — bottom to top"),
+        "Femdom — verbal domination":              ("Low angle — power, dominance",    "Slow orbital arc"),
         "Amateur — naturalistic, raw":             ("Eye-level — neutral, natural",    "Handheld — natural shake"),
         "Action blockbuster":                      ("Low angle — powerful, imposing",  "Tracking — follows subject"),
         "Sports documentary":                      ("Low angle — powerful, imposing",  "Tracking — follows subject"),
@@ -3451,7 +3467,58 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         if is_explicit and _is_sex_scene:
             _wants_swear_injection = True
 
-        # ── Environment preset injection ──────────────────────────────────────
+        # ── Femdom verbal domination detection ────────────────────────────────
+        # Fires when the scene is verbal femdom / findom / domination humiliation.
+        # Triggers: femdom, findom, dominatrix, verbal humiliation, she dominates,
+        # she calls him pathetic, mistress, degradation, SPH, verbal abuse scene etc.
+        _is_femdom_verbal = bool(re.search(
+            r'\b(femdom|findom|dominatrix|verbal\s+domination|verbal\s+humiliation|'
+            r'she\s+(dominates|humiliates|degrades|belittles|insults\s+him|owns\s+him|controls\s+him|abuses\s+(him|me|the))|'
+            r'(she|women?|woman)\s+(abusing|humiliating|degrading|dominating)\s+(him|me|the)|'
+            r'abus(e|es|ing)\s+me\b|'
+            r'he\s+(worships\s+her|is\s+her\s+slave|submits\s+to\s+her)|'
+            r'power\s+exchange|mistress\b|she\s+is\s+his\s+mistress|'
+            r'small\s+dick\s+humiliation|sph\b|financial\s+domination|'
+            r'she\s+calls\s+him\s+(pathetic|useless|worthless|small|weak|pitiful)|'
+            r'verbal\s+abuse|degradation\s+(play|scene)|'
+            r'she\s+degrades|she\s+demeans|she\s+puts\s+him\s+down|'
+            r'worship\s+her|kneel\s+for\s+her|she\s+is\s+superior|'
+            r'dominant\s+woman|female\s+dominant|female\s+domination|'
+            r'humiliat\w+\s+(him|me)|calls\s+(him|me)\s+(pathetic|useless|worthless|a\s+cunt|stupid))\b',
+            _combined_input, re.IGNORECASE
+        ))
+        # Style preset also activates femdom verbal system
+        if "femdom" in style_preset.lower() or "verbal domination" in style_preset.lower():
+            _is_femdom_verbal = True
+
+        # POV mode — she addresses camera directly, no visible male subject
+        _is_femdom_pov = False
+        if _is_femdom_verbal:
+            _is_femdom_pov = bool(re.search(
+                r'\b(pov\b|point\s+of\s+view|looking\s+at\s+(the\s+)?camera|'
+                r'she\s+looks\s+at\s+(me|the\s+viewer|camera)|'
+                r'talking\s+to\s+(the\s+)?(viewer|camera)|'
+                r'no\s+man\b|no\s+male\b|just\s+her|only\s+her|'
+                r'addressing\s+the\s+(viewer|camera)|camera\s+is\s+the\s+subject|'
+                r'viewer\s+is\s+the\s+subject|directly\s+at\s+me|'
+                r'directed\s+at\s+me|she\s+stares\s+down\s+(the\s+)?camera|'
+                r'she\s+dominates\s+the\s+viewer|looking\s+directly\s+at\s+me)\b',
+                _combined_input, re.IGNORECASE
+            ))
+            if "pov" in style_preset.lower():
+                _is_femdom_pov = True# Raw tier — fires when user asks for aggressive/vulgar/screaming femdom energy
+        _is_femdom_raw = _is_femdom_verbal and bool(re.search(
+            r'\b(vulgar|aggressive|screaming|shout\w*|in\s+your\s+face|'
+            r'verbal\s+abuse|abusive|brutal|harsh|mean|nasty|raw\b|'
+            r'really\s+mean|full\s+abuse|absolute\s+abuse|'
+            r'swear\w*\s+at\s+him|curse\w*\s+at\s+him|'
+            r'call\s+him\s+(a\s+)?(loser|pathetic|worthless|useless|tiny|small|piece\s+of\s+shit)|'
+            r'degrade\s+him\s+hard|humiliate\s+him\s+hard|'
+            r'bdsm\s+verbal|raw\s+femdom|mean\s+femdom|'
+            r'loud\s+femdom|angry\s+dom\w*|angry\s+mistress|'
+            r'abus\w+|insult\w+|humiliat\w+)\b',
+            _combined_input, re.IGNORECASE
+        ))
         _env_instruction = ""
         if environment_sel and environment_sel not in ("None — LLM decides", "") and not environment_sel.startswith("─"):
             _env_data = self.ENVIRONMENT_PRESETS.get(environment_sel)
@@ -5145,7 +5212,240 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                     f"Never use [DIALOGUE: ...] tags.]"
                 )
         elif invent_dialogue:
-            if _is_singing and not is_gravure:
+            # ── Ad-lib helper — used by all dialogue paths ────────────────────
+            def _get_adlibs(register_key, genre_key, seed_val, count=4):
+                """Return list of (vocalisation, note) tuples for the given context.
+                Prioritises genre-specific pool — fills remaining slots from universal
+                only if the specific pool doesn't have enough entries."""
+                try:
+                    from lyric_phrase_bank import _ADLIB_POOLS, _ADLIB_CONTEXT_MAP
+                    import random as _al_rand
+                    _rng = _al_rand.Random((seed_val + 77) if seed_val != -1 else None)
+                    _keys = (_ADLIB_CONTEXT_MAP.get(register_key)
+                             or _ADLIB_CONTEXT_MAP.get(genre_key)
+                             or ["universal"])
+                    # Split genre-specific keys from universal
+                    _specific_keys = [k for k in _keys if k != "universal"]
+                    _specific_pool = []
+                    for _k in _specific_keys:
+                        _specific_pool += _ADLIB_POOLS.get(_k, [])
+                    # Sample from specific pool first
+                    _result = []
+                    if _specific_pool:
+                        _take = min(count, len(_specific_pool))
+                        _result = _rng.sample(_specific_pool, _take)
+                    # Fill any remaining slots from universal (different RNG offset)
+                    if len(_result) < count:
+                        _universal = _ADLIB_POOLS.get("universal", [])
+                        # Exclude any already sampled
+                        _used = {r[0] for r in _result}
+                        _universal_remaining = [u for u in _universal if u[0] not in _used]
+                        _need = count - len(_result)
+                        if _universal_remaining:
+                            _rng2 = _al_rand.Random((seed_val + 99) if seed_val != -1 else None)
+                            _result += _rng2.sample(_universal_remaining, min(_need, len(_universal_remaining)))
+                    return _result if _result else [("yeah",""), ("uh",""), ("okay",""), ("mm","")]
+                except Exception:
+                    return [("yeah", ""), ("uh", ""), ("okay", ""), ("mm", "")]
+
+            def _fmt_adlib_injection(adlibs, context="lyric"):
+                """Format ad-libs as LLM instruction string."""
+                if not adlibs:
+                    return ""
+                labels = ["OPENING gap", "BUILD gap", "PEAK gap", "RESOLVE gap"]
+                lines = []
+                for i, (word, note) in enumerate(adlibs[:4]):
+                    label = labels[i] if i < len(labels) else f"gap {i+1}"
+                    lines.append(f'\n{label}: "{word}"' + (f" — [{note}]" if note else ""))
+                return (
+                    f"\n\nAD-LIBS & INTERSTITIAL VOCALISATIONS — inject BETWEEN anchor phrases, "
+                    f"not replacing them. These are the small sounds that fill the gaps and make the "
+                    f"performance feel natural and alive:"
+                    + "".join(lines)
+                    + "\nPlace each at its arc position — in breaths, pauses, transitions between phrases."
+                )
+
+            # ── Femdom verbal domination — fires before singing/sex checks ───── — fires before singing/sex checks ─────
+            if _is_femdom_verbal:
+                try:
+                    from lyric_phrase_bank import (
+                        _FEMDOM_VERBAL_POOL, _FEMDOM_VERBAL_POOL_RAW, _FEMDOM_STYLE_PRESET,
+                        _FEMDOM_PHYSICAL_POOL, _FEMDOM_POV_INSTRUCTION,
+                        _FEMDOM_POV_PHYSICAL_INSTRUCTION
+                    )
+                    _fv_rng = random.Random((seed + 53) if seed != -1 else None)
+
+                    # Pick pool based on intensity tier
+                    _fv_pool = _FEMDOM_VERBAL_POOL_RAW if _is_femdom_raw else _FEMDOM_VERBAL_POOL
+                    _fv_tier = "RAW/VULGAR" if _is_femdom_raw else "POLISHED"
+
+                    _fv_opener  = _fv_rng.choice(_fv_pool.get("opener",      [("Look at you.", "")]))
+                    _fv_contempt= _fv_rng.choice(_fv_pool.get("contempt",    [("Pathetic.", "")]))
+                    _fv_command = _fv_rng.choice(_fv_pool.get("command",     [("Don't move.", "")]))
+                    _fv_humil   = _fv_rng.choice(_fv_pool.get("humiliation", [("You're small.", "")]))
+                    _fv_dismiss = _fv_rng.choice(_fv_pool.get("dismissal",   [("You're done.", "")]))
+
+                    def _fv_fmt(e):
+                        if isinstance(e, tuple):
+                            return f'"{e[0]}" — [{e[1]}]' if len(e) > 1 and e[1] else f'"{e[0]}"'
+                        return f'"{e}"'
+
+                    # Raw tier gets extra instruction about aggression level
+                    _raw_addendum = (
+                        "\n\nINTENSITY — RAW/VULGAR TIER: She is aggressive, loud when she wants to be, "
+                        "uses profanity as punctuation. She swears AT him, not around him. "
+                        "Contempt delivered at volume. She gets in his face. She doesn't wait for him to process. "
+                        "This is not a polished dungeon — this is in-your-face verbal abuse energy. "
+                        "Tone: angry mistress who has had enough. "
+                        "FORBIDDEN: whispering, restraint, coolness. She is hot not cold."
+                    ) if _is_femdom_raw else ""
+
+                    dialogue_instruction = (
+                        "\n\n[FEMDOM VERBAL DOMINATION SCENE — MANDATORY TONE: "
+                        + (_FEMDOM_STYLE_PRESET.get("llm_instruction_raw", _FEMDOM_STYLE_PRESET["llm_instruction"]) if _is_femdom_raw else _FEMDOM_STYLE_PRESET["llm_instruction"])
+                        + _raw_addendum
+                        + "\n\nSCENE STRUCTURE — five beats across the clip: "
+                        f"\nOPENER: {_fv_fmt(_fv_opener)} "
+                        f"\nCONTEMPT: {_fv_fmt(_fv_contempt)} "
+                        f"\nCOMMAND: {_fv_fmt(_fv_command)} "
+                        f"\nHUMILIATION: {_fv_fmt(_fv_humil)} "
+                        f"\nDISMISSAL: {_fv_fmt(_fv_dismiss)} "
+                        "\n\nCAMERA — MANDATORY: "
+                        + _FEMDOM_STYLE_PRESET["camera"]
+                        + "\n\nCLOTHING — UNLESS USER DESCRIBED OTHERWISE: "
+                        + _FEMDOM_STYLE_PRESET["clothing"]
+                        + "\n\nSOUND: " + _FEMDOM_STYLE_PRESET["sound"] + "]"
+                    )
+                    # Inject contextually appropriate ad-libs
+                    _fv_adlibs = _get_adlibs(
+                        "femdom_verbal" if not _is_femdom_raw else "femdom_verbal",
+                        "dominant", seed, 4
+                    )
+                    # Override with raw pool for raw tier
+                    if _is_femdom_raw:
+                        try:
+                            from lyric_phrase_bank import _ADLIB_POOLS
+                            import random as _fv_al_rnd
+                            _fv_al_pool = _ADLIB_POOLS.get("femdom_raw", []) + _ADLIB_POOLS.get("dominant", [])
+                            _fv_adlibs = _fv_al_rnd.Random((seed + 79) if seed != -1 else None).sample(
+                                _fv_al_pool, min(4, len(_fv_al_pool)))
+                        except Exception:
+                            pass
+                    dialogue_instruction += _fmt_adlib_injection(_fv_adlibs, "femdom")
+                    # ── Physical action injection ──────────────────────────
+                    # Detect what user described → bias toward that category.
+                    # Always picks 2 actions from different categories.
+                    _phys_str = ""
+                    try:
+                        import random as _phys_rnd
+                        import re as _phys_re
+                        _phys_rng = _phys_rnd.Random((seed + 83) if seed != -1 else None)
+                        _ci_phys = _combined_input.lower()
+
+                        # Detection map — what user typed → which pool to bias
+                        _phys_detect = {
+                            "kick":         r"\b(kick\w*|kicking|her\s+boot|stamps?\s+(on|her)|stomps?|toe\s+of)\b",
+                            "throat":       r"\b(throat|choke?\w*|by\s+the\s+throat|hand\s+on\s+(his\s+)?throat|strangles?)\b",
+                            "impact":       r"\b(slap\w*|smack\w*|backhand\w*|cuff\w*|punch\w*|hit\s+(him|his))\b",
+                            "control":      r"\b(hair\s+pull\w*|pulls?\s+(his\s+)?hair|grabs?\s+(his\s+)?(hair|wrist|collar)|pins?\s+(him|his\s+arms))\b",
+                            "positional":   r"\b(foot\s+on\s+(his\s+)?chest|stands?\s+over\s+him|boot\s+on\s+(his\s+)?(neck|face|shoulder)|kneels?|kneeling|on\s+(his|all)\s+(knees|fours))\b",
+                            "playful":      r"\b(playful\w*|teas\w+|flick\w*\s+(his|him)|pokes?\s+(him|his)|pats?\s+his|taps?\s+(his\s+)?cheek)\b",
+                            "object":       r"\b(riding\s+crop|the\s+crop|leash\b|whip\b|handcuffs?|restraints?|collar\b)\b",
+                            "face":         r"\b(grabs?\s+(his\s+)?face|pushes?\s+(his\s+)?face|jaw\s+grab|grabs?\s+(his\s+)?jaw|covers?\s+his\s+mouth|his\s+face)\b",
+                            "degradation":  r"\b(sits?\s+on\s+him|footrest|uses?\s+him\s+as|treat\w*\s+him\s+(like|as)\s+(an?\s+)?(object|furniture|thing|pet|dog)|human\s+(furniture|chair|table|ashtray))\b",
+                            "restraint":    r"\b(tie\s+(him|his|up)|bind\w*|restrain\w*|bound\b|tied\s+up|hands\s+behind|rope\b|zip\s+ties?|handcuffed?)\b",
+                            "spit_contact": r"\b(spits?\s+(on|at|in)\s+him|spitting\s+on|wipes?\s+(her\s+hand|it)\s+on\s+him)\b",
+                        }
+
+                        _requested_cats = []
+                        for _cat, _pat in _phys_detect.items():
+                            if _phys_re.search(_pat, _ci_phys, _phys_re.IGNORECASE):
+                                if _cat not in _requested_cats:
+                                    _requested_cats.append(_cat)
+
+                        # ── General aggression / abuse words → mixed physical ──
+                        # "abuses", "beats up", "brutalises" etc trigger a curated
+                        # mix of impact/kick/control/throat — the full physical picture
+                        _AGGRESSION_MIX = ["impact", "kick", "control", "throat", "positional"]
+                        _is_general_aggression = bool(_phys_re.search(
+                            r"\b(abuse[sd]?\s+(him|me)|abusing\s+(him|me)|beats?\s+(him|me)\s+up|"
+                            r"beats?\s+up|brutalise[sd]?|brutalize[sd]?|beat\s+him|beating\s+him|"
+                            r"physically\s+(abuses?|dominates?|punishes?|hurts?)|"
+                            r"rough\s+(with\s+him|treatment)|rough\s+femdom|"
+                            r"aggressive\s+(femdom|domination|scene)|"
+                            r"full\s+(abuse|domination|physical)|physical\s+femdom|"
+                            r"she\s+(beats?|hits?|punishes?|hurts?|brutalises?)\s+him|"
+                            r"he\s+gets\s+(beaten|hurt|punished|abused))\b",
+                            _ci_phys, _phys_re.IGNORECASE
+                        ))
+                        if _is_general_aggression and not _requested_cats:
+                            # Pick 3 from the aggression mix — varied every time via seed
+                            _requested_cats = _phys_rng.sample(_AGGRESSION_MIX, 3)
+
+                        _phys_cats = list(_FEMDOM_PHYSICAL_POOL.keys())
+                        _picked_cats = []
+
+                        if _requested_cats:
+                            # Up to 3 actions if aggression mode, otherwise 2
+                            _n_actions = 3 if _is_general_aggression else 2
+                            # Fill from requested cats first, then random for remainder
+                            for _rc in _requested_cats[:_n_actions]:
+                                if _rc not in _picked_cats:
+                                    _picked_cats.append(_rc)
+                            while len(_picked_cats) < _n_actions:
+                                _remaining = [c for c in _phys_cats if c not in _picked_cats]
+                                if not _remaining:
+                                    break
+                                _picked_cats.append(_phys_rng.choice(_remaining))
+                        else:
+                            # Nothing specified — pick 2 random varied categories
+                            _picked_cats = _phys_rng.sample(_phys_cats, min(2, len(_phys_cats)))
+
+                        _phys_actions = []
+                        for _cat in _picked_cats:
+                            _act, _act_note = _phys_rng.choice(_FEMDOM_PHYSICAL_POOL[_cat])
+                            _phys_actions.append(f'"{_act}" — [{_act_note}]')
+
+                        _phys_str = (
+                            "\n\nPHYSICAL ACTIONS — weave these into the scene between verbal beats. "
+                            "They are physical punctuation — not instead of the words, alongside them. "
+                            "Each action has a camera note in brackets — use it to write the physical description: "
+                            + "\n" + "\n".join(_phys_actions)
+                        )
+                    except Exception:
+                        _phys_str = ""
+
+                    # ── POV mode override ───────────────────────────────────
+                    # If physical abuse is also active, use the camera-as-body
+                    # version — the lens jolts, drops, snaps with every impact.
+                    # If POV only (verbal/positional), use the standard version.
+                    _pov_str = ""
+                    if _is_femdom_pov:
+                        _has_physical_abuse = bool(_phys_str) and any(
+                            cat in (_picked_cats if "_picked_cats" in dir() else [])
+                            for cat in ["impact", "kick", "throat", "face", "spit_contact"]
+                        )
+                        # Also check prompt directly for abuse words
+                        if not _has_physical_abuse:
+                            _has_physical_abuse = bool(re.search(
+                                r"\b(abuse[sd]?|abusing|beats?\s+up|beating|kicks?|slaps?|"
+                                r"chokes?|throat|rough\s+femdom|brutal|physical\s+femdom|"
+                                r"beats?\s+(him|me)|punish\w*|hurt\w*\s+(him|me))\b",
+                                _combined_input, re.IGNORECASE
+                            ))
+                        if _has_physical_abuse:
+                            _pov_str = "\n\n" + _FEMDOM_POV_PHYSICAL_INSTRUCTION
+                        else:
+                            _pov_str = "\n\n" + _FEMDOM_POV_INSTRUCTION
+                        print(f"[LTX2-Qwen] POV mode: {'PHYSICAL/IMPACT' if _has_physical_abuse else 'STANDARD'}")
+
+                    dialogue_instruction += _phys_str + _pov_str
+                    print(f"[LTX2-Qwen] Femdom verbal domination: {_fv_tier} tier active | physical={'YES'} | pov={_is_femdom_pov}")
+                except ImportError:
+                    dialogue_instruction = "\n[FEMDOM VERBAL DOMINATION: She is in complete control. Cold, precise, contemptuous. Short sentences. She never explains herself. The camera looks up at her.]"
+                    print("[LTX2-Qwen] WARNING: femdom pool not found — using fallback")
+
+            elif _is_singing and not is_gravure:
                 # ── General singing scene (non-gravure, any preset) ───────────
                 # Three cases:
                 #  (A) User quoted specific lyrics → sing those exact words
@@ -5181,26 +5481,80 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                 import re as _lre
                 _ci_l = _combined_input.lower()
                 _lyric_genre = "pop"
-                if _lre.search(r'\b(blues|delta|chicago\s+blues)\b', _ci_l): _lyric_genre = "blues"
-                elif _lre.search(r'\b(jazz|bebop|cool\s+jazz|big\s+band|swing)\b', _ci_l): _lyric_genre = "jazz"
-                elif _lre.search(r'\b(soul|motown|northern\s+soul)\b', _ci_l): _lyric_genre = "soul"
-                elif _lre.search(r'\b(gospel|church|spiritual|hymn)\b', _ci_l): _lyric_genre = "gospel"
-                elif _lre.search(r'\b(r&b|rnb|neo.?soul)\b', _ci_l): _lyric_genre = "rnb"
-                elif _lre.search(r'\b(folk|americana|bluegrass|campfire)\b', _ci_l): _lyric_genre = "folk"
-                elif _lre.search(r'\b(country|nashville|honky.tonk)\b', _ci_l): _lyric_genre = "country"
-                elif _lre.search(r'\b(opera|operatic|aria|soprano)\b', _ci_l): _lyric_genre = "opera"
-                elif _lre.search(r'\b(classical|orchestral|art\s+song|lieder)\b', _ci_l): _lyric_genre = "classical"
-                elif _lre.search(r'\b(cabaret|torch|weimar|burlesque)\b', _ci_l): _lyric_genre = "cabaret"
-                elif _lre.search(r'\b(rock|indie\s+rock|punk|grunge|metal)\b', _ci_l): _lyric_genre = "rock"
-                elif _lre.search(r'\b(hip.?hop|rap\w*|trap|drill|grime)\b', _ci_l): _lyric_genre = "hiphop"
-                elif _lre.search(r'\b(bollywood|filmi|ghazal|bhangra)\b', _ci_l): _lyric_genre = "bollywood"
-                elif _lre.search(r'\b(disco|funk|dance|house|techno|edm)\b', _ci_l): _lyric_genre = "dance"
-                elif _lre.search(r'\b(k.?pop|kpop|korean\s+pop)\b', _ci_l): _lyric_genre = "kpop"
-                elif _lre.search(r'\b(j.?pop|japanese\s+pop|city\s+pop)\b', _ci_l): _lyric_genre = "jpop"
-                elif _lre.search(r'\b(reggae|ska|dancehall)\b', _ci_l): _lyric_genre = "reggae"
-                elif _lre.search(r'\b(flamenco|cante\s+jondo)\b', _ci_l): _lyric_genre = "flamenco"
-                elif _lre.search(r'\b(bossa|samba|MPB)\b', _ci_l): _lyric_genre = "bossa"
-                                # Also read from music genre dropdown
+
+                # ── Artist name → genre routing (checked first, most specific) ──
+                # "X style", "like X", "in the style of X", "X inspired" all work.
+                # Uses the artist's genre DNA — does NOT reproduce their lyrics.
+                if _lre.search(r'\b(kavinsky|the\s+midnight|fm.?84|gunship|perturbator|carpenter\s+brut)\b', _ci_l): _lyric_genre = "synthwave"
+                elif _lre.search(r'\b(charli\s*xcx|100\s*gecs|sophie\b|arca\b|uffie|grimes\b|hyperpop)\b', _ci_l): _lyric_genre = "hyperpop"
+                elif _lre.search(r'\b(joji|rex\s+orange\s+county|cuco\b|beabadoobee|role\s+model|omar\s+apollo)\b', _ci_l): _lyric_genre = "lofi"
+                elif _lre.search(r'\b(phoebe\s+bridgers|sufjan\s+stevens|elliott\s+smith|nick\s+drake|bon\s+iver)\b', _ci_l): _lyric_genre = "midnight"
+                elif _lre.search(r'\b(olivia\s+rodrigo|alanis\s+morissette|taylor\s+swift.*vindict|paramore\s+early)\b', _ci_l): _lyric_genre = "bitter"
+                elif _lre.search(r'\b(adele\b|sam\s+smith|billie\s+holiday|nina\s+simone|whitney\s+houston)\b', _ci_l): _lyric_genre = "grief"
+                elif _lre.search(r'\b(burna\s+boy|wizkid\b|davido\b|tems\b|rema\b|afrobeats\s+artist)\b', _ci_l): _lyric_genre = "afrobeats"
+                elif _lre.search(r'\b(bob\s+marley|burning\s+spear|toots\b|chronixx\b|sizzla\b|damian\s+marley)\b', _ci_l): _lyric_genre = "reggae"
+                elif _lre.search(r'\b(joao\s+gilberto|astrud\s+gilberto|caetano\s+veloso|stan\s+getz|bossa)\b', _ci_l): _lyric_genre = "bossa"
+                elif _lre.search(r'\b(camaron|paco\s+de\s+lucia|estrella\s+morente|flamenco\s+artist)\b', _ci_l): _lyric_genre = "flamenco"
+                elif _lre.search(r'\b(lata\s+mangeshkar|ar\s+rahman|arijit\s+singh|shreya\s+ghoshal|kishore\s+kumar)\b', _ci_l): _lyric_genre = "bollywood"
+                elif _lre.search(r'\b(carlos\s+vives|celia\s+cruz|marc\s+anthony|shakira\b|juanes\b)\b', _ci_l): _lyric_genre = "latin"
+                elif _lre.search(r'\b(mariya\s+takeuchi|tatsuro\s+yamashita|yumi\s+matsutoya|city\s+pop\s+era)\b', _ci_l): _lyric_genre = "city pop"
+                elif _lre.search(r'\b(jay.z\b|kendrick\s+lamar|kanye\b|nas\b|biggie\b|lil\s+wayne|nicki\s+minaj|drake\b|cardi\s*b|eminem\b)\b', _ci_l): _lyric_genre = "rap"
+                elif _lre.search(r'\b(21\s+savage|pop\s+smoke|central\s+cee|dave\b|headie\s+one|skepta\b|stormzy\b)\b', _ci_l): _lyric_genre = "drill"
+                elif _lre.search(r'\b(skrillex\b|excision\b|zomboy\b|rusko\b|datsik\b|flux\s+pavilion)\b', _ci_l): _lyric_genre = "dubstep"
+                elif _lre.search(r'\b(donna\s+summer|chic\b|james\s+brown|earth\s+wind|daft\s+punk|nile\s+rodgers)\b', _ci_l): _lyric_genre = "funk"
+                elif _lre.search(r'\b(the\s+clash|sex\s+pistols|bikini\s+kill|idles\b|pup\b|dead\s+kennedys)\b', _ci_l): _lyric_genre = "punk"
+                elif _lre.search(r'\b(brian\s+eno|grouper\b|sigur\s+ros|william\s+basinski|stars\s+of\s+the\s+lid)\b', _ci_l): _lyric_genre = "ambient"
+                elif _lre.search(r'\b(aretha\s+franklin|marvin\s+gaye|otis\s+redding|sam\s+cooke|al\s+green)\b', _ci_l): _lyric_genre = "soul"
+                elif _lre.search(r'\b(mahalia\s+jackson|kirk\s+franklin|cece\s+winans|yolanda\s+adams)\b', _ci_l): _lyric_genre = "gospel"
+                elif _lre.search(r'\b(miles\s+davis|john\s+coltrane|billie\s+holiday.*jazz|ella\s+fitzgerald|chet\s+baker)\b', _ci_l): _lyric_genre = "jazz"
+                elif _lre.search(r'\b(bb\s+king|muddy\s+waters|robert\s+johnson|stevie\s+ray\s+vaughan|etta\s+james)\b', _ci_l): _lyric_genre = "blues"
+                elif _lre.search(r'\b(metallica\b|black\s+sabbath|slayer\b|pantera\b|system\s+of\s+a\s+down)\b', _ci_l): _lyric_genre = "metal"
+                elif _lre.search(r'\b(johnny\s+cash|dolly\s+parton|hank\s+williams|willie\s+nelson|loretta\s+lynn)\b', _ci_l): _lyric_genre = "country"
+                elif _lre.search(r'\b(bob\s+dylan|joni\s+mitchell|simon\s+and\s+garfunkel|leonard\s+cohen|nick\s+cave)\b', _ci_l): _lyric_genre = "folk"
+                elif _lre.search(r'\b(bts\b|blackpink\b|twice\b|exo\b|stray\s+kids|aespa\b|newjeans\b|ive\b|lesserafim\b)\b', _ci_l): _lyric_genre = "kpop"
+                elif _lre.search(r'\b(kenshi\s+yonezu|yoasobi\b|ado\b|fujii\s+kaze|official\s+hige\s+dandism)\b', _ci_l): _lyric_genre = "jpop"
+                elif _lre.search(r'\b(frank\s+sinatra|dean\s+martin|tony\s+bennett|michael\s+buble|norah\s+jones)\b', _ci_l): _lyric_genre = "jazz"
+                elif _lre.search(r'\b(mozart\b|beethoven\b|bach\b|chopin\b|debussy\b|satie\b)\b', _ci_l): _lyric_genre = "classical"
+                elif _lre.search(r'\b(maria\s+callas|pavarotti\b|andrea\s+bocelli\b|puccini\b|verdi\b)\b', _ci_l): _lyric_genre = "opera"
+                elif _lre.search(r'\b(beyonce\b|rihanna\b|sza\b|frank\s+ocean|the\s+weeknd|h\.e\.r\b|doja\s+cat)\b', _ci_l): _lyric_genre = "rnb"
+
+                # ── Genre keyword detection (fallback if no artist matched) ──────
+                if _lyric_genre == "pop":  # only run if artist detection didn't fire
+                    if _lre.search(r'\b(blues|delta|chicago\s+blues)\b', _ci_l): _lyric_genre = "blues"
+                    elif _lre.search(r'\b(soul|motown|northern\s+soul)\b', _ci_l): _lyric_genre = "soul"
+                    elif _lre.search(r'\b(gospel|church|spiritual|hymn)\b', _ci_l): _lyric_genre = "gospel"
+                    elif _lre.search(r'\b(r&b|rnb|neo.?soul)\b', _ci_l): _lyric_genre = "rnb"
+                    elif _lre.search(r'\b(folk|americana|bluegrass|campfire)\b', _ci_l): _lyric_genre = "folk"
+                    elif _lre.search(r'\b(country|nashville|honky.tonk)\b', _ci_l): _lyric_genre = "country"
+                    elif _lre.search(r'\b(opera|operatic|aria|soprano)\b', _ci_l): _lyric_genre = "opera"
+                    elif _lre.search(r'\b(classical|orchestral|art\s+song|lieder)\b', _ci_l): _lyric_genre = "classical"
+                    elif _lre.search(r'\b(cabaret|torch|weimar|burlesque|musical\s+theatre)\b', _ci_l): _lyric_genre = "cabaret"
+                    elif _lre.search(r'\b(diss\s+track|diss\w*|beef\b|calling\s+\w+(\s+\w+)?\s+out|calling\s+out|calls?\s+\w+(\s+\w+)?\s+out|bars\s+at\s+(him|her)|shots\s+at\s+(him|her|them))\b', _ci_l): _lyric_genre = "diss"
+                    elif _lre.search(r'\b(metal|heavy\s+metal|screamo|death\s+metal|hardcore)\b', _ci_l): _lyric_genre = "metal"
+                    elif _lre.search(r'\b(punk|pop.?punk|riot\s+grrrl|oi\b)\b', _ci_l): _lyric_genre = "punk"
+                    elif _lre.search(r'\b(drill|uk\s+drill|road\s+rap)\b', _ci_l): _lyric_genre = "drill"
+                    elif _lre.search(r'\b(trap\b)\b', _ci_l): _lyric_genre = "trap"
+                    elif _lre.search(r'\b(hip.?hop|rap\b|bars|freestyle|mc\b)\b', _ci_l): _lyric_genre = "rap"
+                    elif _lre.search(r'\b(grime|grime\s+mc)\b', _ci_l): _lyric_genre = "grime"
+                    elif _lre.search(r'\b(dubstep|bass\s+music|wub|dnb|drum\s+and\s+bass|jungle\s+music)\b', _ci_l): _lyric_genre = "dubstep"
+                    elif _lre.search(r'\b(synthwave|retrowave|outrun|80s\s+synth|vaporwave)\b', _ci_l): _lyric_genre = "synthwave"
+                    elif _lre.search(r'\b(ambient|atmospheric|drone|soundscape|experimental)\b', _ci_l): _lyric_genre = "ambient"
+                    elif _lre.search(r'\b(funk|funky)\b', _ci_l): _lyric_genre = "funk"
+                    elif _lre.search(r'\b(disco|dancefloor|mirror\s+ball)\b', _ci_l): _lyric_genre = "disco"
+                    elif _lre.search(r'\b(house|techno|edm|rave|trance|electronic)\b', _ci_l): _lyric_genre = "dance"
+                    elif _lre.search(r'\b(afrobeats|afropop|afro\s+swing|naija)\b', _ci_l): _lyric_genre = "afrobeats"
+                    elif _lre.search(r'\b(dancehall|reggaeton|bashment)\b', _ci_l): _lyric_genre = "dancehall"
+                    elif _lre.search(r'\b(reggae|ska|rocksteady)\b', _ci_l): _lyric_genre = "reggae"
+                    elif _lre.search(r'\b(k.?pop|kpop|korean\s+pop|idol\s+group)\b', _ci_l): _lyric_genre = "kpop"
+                    elif _lre.search(r'\b(city\s+pop|citypop)\b', _ci_l): _lyric_genre = "city pop"
+                    elif _lre.search(r'\b(j.?pop|japanese\s+pop)\b', _ci_l): _lyric_genre = "jpop"
+                    elif _lre.search(r'\b(lo.?fi|bedroom\s+pop|tape\s+hiss|2am\s+beat)\b', _ci_l): _lyric_genre = "lofi"
+                    elif _lre.search(r'\b(indie|indie\s+rock|shoegaze|slowcore)\b', _ci_l): _lyric_genre = "indie"
+                    elif _lre.search(r'\b(bollywood|filmi|ghazal|bhangra)\b', _ci_l): _lyric_genre = "bollywood"
+                    elif _lre.search(r'\b(flamenco|cante\s+jondo)\b', _ci_l): _lyric_genre = "flamenco"
+                    elif _lre.search(r'\b(bossa|samba|MPB)\b', _ci_l): _lyric_genre = "bossa"
+                    elif _lre.search(r'\b(rock|grunge|alt.?rock)\b', _ci_l): _lyric_genre = "rock"
+                    elif _lre.search(r'\b(jazz|bebop|cool\s+jazz|big\s+band|swing)\b', _ci_l): _lyric_genre = "jazz"
                 _mg_l = music_genre.lower()
                 if "blues" in _mg_l: _lyric_genre = "blues"
                 elif "jazz" in _mg_l: _lyric_genre = "jazz"
@@ -5210,17 +5564,33 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                 elif "folk" in _mg_l or "americana" in _mg_l: _lyric_genre = "folk"
                 elif "country" in _mg_l: _lyric_genre = "country"
                 elif "opera" in _mg_l: _lyric_genre = "opera"
-                elif "classical" in _mg_l: _lyric_genre = "classical"
-                elif "cabaret" in _mg_l: _lyric_genre = "cabaret"
-                elif "rock" in _mg_l or "punk" in _mg_l or "metal" in _mg_l: _lyric_genre = "rock"
-                elif "hip-hop" in _mg_l or "rap" in _mg_l or "trap" in _mg_l or "drill" in _mg_l: _lyric_genre = "hiphop"
-                elif "disco" in _mg_l or "funk" in _mg_l or "house" in _mg_l or "techno" in _mg_l: _lyric_genre = "dance"
-                elif "k-pop" in _mg_l or "kpop" in _mg_l: _lyric_genre = "kpop"
-                elif "j-pop" in _mg_l or "jpop" in _mg_l or "city pop" in _mg_l: _lyric_genre = "jpop"
+                elif "classical" in _mg_l or "orchestral" in _mg_l: _lyric_genre = "classical"
+                elif "cabaret" in _mg_l or "musical theatre" in _mg_l or "burlesque" in _mg_l: _lyric_genre = "cabaret"
+                elif "metal" in _mg_l or "heavy metal" in _mg_l: _lyric_genre = "metal"
+                elif "punk" in _mg_l or "pop-punk" in _mg_l: _lyric_genre = "punk"
+                elif "drill" in _mg_l or "uk drill" in _mg_l: _lyric_genre = "drill"
+                elif "trap" in _mg_l: _lyric_genre = "trap"
+                elif "hip-hop" in _mg_l or "rap" in _mg_l: _lyric_genre = "rap"
+                elif "grime" in _mg_l: _lyric_genre = "grime"
+                elif "drum and bass" in _mg_l or "dnb" in _mg_l or "jungle" in _mg_l: _lyric_genre = "dubstep"
+                elif "dubstep" in _mg_l or "bass music" in _mg_l: _lyric_genre = "dubstep"
+                elif "synthwave" in _mg_l or "retrowave" in _mg_l or "vaporwave" in _mg_l: _lyric_genre = "synthwave"
+                elif "ambient" in _mg_l or "atmospheric" in _mg_l: _lyric_genre = "ambient"
+                elif "funk" in _mg_l: _lyric_genre = "funk"
+                elif "disco" in _mg_l: _lyric_genre = "disco"
+                elif "house" in _mg_l or "techno" in _mg_l or "trance" in _mg_l or "edm" in _mg_l or "electronic" in _mg_l: _lyric_genre = "dance"
+                elif "afrobeats" in _mg_l or "afropop" in _mg_l: _lyric_genre = "afrobeats"
+                elif "dancehall" in _mg_l or "reggaeton" in _mg_l: _lyric_genre = "dancehall"
                 elif "reggae" in _mg_l or "ska" in _mg_l: _lyric_genre = "reggae"
+                elif "k-pop" in _mg_l or "kpop" in _mg_l: _lyric_genre = "kpop"
+                elif "city pop" in _mg_l or "citypop" in _mg_l: _lyric_genre = "city pop"
+                elif "j-pop" in _mg_l or "jpop" in _mg_l: _lyric_genre = "jpop"
+                elif "lo-fi" in _mg_l or "lofi" in _mg_l: _lyric_genre = "lofi"
+                elif "indie" in _mg_l or "shoegaze" in _mg_l: _lyric_genre = "indie"
                 elif "flamenco" in _mg_l: _lyric_genre = "flamenco"
                 elif "bossa" in _mg_l or "samba" in _mg_l: _lyric_genre = "bossa"
                 elif "bollywood" in _mg_l or "bhangra" in _mg_l: _lyric_genre = "bollywood"
+                elif "rock" in _mg_l: _lyric_genre = "rock"
 
                 _lyric_emotion = "neutral"
                 if _lre.search(r'\b(sad|grief|heartbreak|loss|miss|lonely|cry|mourn)\b', _ci_l): _lyric_emotion = "grief"
@@ -5588,21 +5958,74 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                         _chosen_register = _pb_rng.choice(_reg_pool)
                         _reg_phrases = _LYRIC_PHRASE_BANK.get(_chosen_register, {})
 
-                        _p_open  = _pb_rng.choice(_reg_phrases.get("opening",   ["I want to feel this"]))
-                        _p_build = _pb_rng.choice(_reg_phrases.get("build",     ["Take me further"]))
-                        _p_peak  = _pb_rng.choice(_reg_phrases.get("peak",      ["Everything arrived at once"]))
-                        _p_res   = _pb_rng.choice(_reg_phrases.get("resolution",["I'll carry this forward"]))
+                        def _unpack_phrase(entry):
+                            """Handle plain string or (lyric, delivery_note) tuple."""
+                            if isinstance(entry, tuple) and len(entry) >= 2:
+                                return entry[0], entry[1]
+                            return str(entry), ""
+
+                        _raw_open  = _pb_rng.choice(_reg_phrases.get("opening",   ["I want to feel this"]))
+                        _raw_build = _pb_rng.choice(_reg_phrases.get("build",     ["Take me further"]))
+                        _raw_peak  = _pb_rng.choice(_reg_phrases.get("peak",      ["Everything arrived at once"]))
+                        _raw_res   = _pb_rng.choice(_reg_phrases.get("resolution",["I'll carry this forward"]))
+
+                        _p_open,  _d_open  = _unpack_phrase(_raw_open)
+                        _p_build, _d_build = _unpack_phrase(_raw_build)
+                        _p_peak,  _d_peak  = _unpack_phrase(_raw_peak)
+                        _p_res,   _d_res   = _unpack_phrase(_raw_res)
+
+                        def _fmt_phrase_with_note(label, lyric, note):
+                            if note:
+                                return f'\n{label}: "{lyric}" — [{note}]'
+                            return f'\n{label}: "{lyric}"'
+
+                        # ── Ad-lib injection ─────────────────────────────
+                        # Sample contextually appropriate interstitial vocalisations
+                        # from the ad-lib pools — the sounds between phrases that make
+                        # a performance feel alive. 1 per arc position max.
+                        _adlib_str = ""
+                        try:
+                            from lyric_phrase_bank import _ADLIB_POOLS, _ADLIB_CONTEXT_MAP
+                            _al_rng = random.Random((seed + 77) if seed != -1 else None)
+                            # Get pools for this register
+                            _al_pool_keys = _ADLIB_CONTEXT_MAP.get(_chosen_register,
+                                            _ADLIB_CONTEXT_MAP.get(_lyric_genre, ["universal"]))
+                            # Build combined pool, deduplicated
+                            _al_combined = []
+                            for _pk in _al_pool_keys:
+                                _al_combined += _ADLIB_POOLS.get(_pk, [])
+                            if not _al_combined:
+                                _al_combined = _ADLIB_POOLS["universal"]
+                            # Pick 4 unique ad-libs, one per arc position
+                            _al_sample = _al_rng.sample(_al_combined, min(4, len(_al_combined)))
+                            _al_open  = _al_sample[0][0] if len(_al_sample) > 0 else ""
+                            _al_build = _al_sample[1][0] if len(_al_sample) > 1 else ""
+                            _al_peak  = _al_sample[2][0] if len(_al_sample) > 2 else ""
+                            _al_res   = _al_sample[3][0] if len(_al_sample) > 3 else ""
+                            _adlib_str = (
+                                f"\n\nAD-LIBS & INTERSTITIAL VOCALISATIONS — inject these BETWEEN the anchor phrases, "
+                                f"not replacing them. These are the small sounds/words that fill the gaps and make the "
+                                f"performance feel natural and alive. Place each one at its arc position: "
+                                f"\nOPENING gap: \"{_al_open}\" "
+                                f"\nBUILD gap: \"{_al_build}\" "
+                                f"\nPEAK gap: \"{_al_peak}\" "
+                                f"\nRESOLVE gap: \"{_al_res}\" "
+                                f"\nThese arrive BETWEEN phrases — in breaths, pauses, transitions. "
+                                f"They are not the main lyric, they are the texture around it."
+                            )
+                        except Exception:
+                            _adlib_str = ""
 
                         _phrase_injection = (
-                            f"\n\nLYRIC ANCHOR PHRASES — USE THESE AS SEEDS OR RIFF FROM THEM CLOSELY: "
-                            f"These four phrases are the emotional spine of the lyric. "
-                            f"Use them verbatim or adapt them to fit the melody — do NOT ignore them. "
-                            f"They define the register and tone. "
-                            f"\nOPENING phrase: \"{_p_open}\" "
-                            f"\nBUILD phrase: \"{_p_build}\" "
-                            f"\nPEAK phrase: \"{_p_peak}\" "
-                            f"\nRESOLUTION phrase: \"{_p_res}\" "
-                            f"\nRegister: {_chosen_register.replace('_', ' ').upper()}"
+                            f"\n\nLYRIC ANCHOR PHRASES — USE THESE VERBATIM OR RIFF CLOSELY: "
+                            f"These four phrases are the emotional spine. "
+                            f"The delivery note in brackets describes voice, body, and physical performance — use it to write the surrounding prose. "
+                            + _fmt_phrase_with_note("OPENING", _p_open, _d_open)
+                            + _fmt_phrase_with_note("BUILD",   _p_build, _d_build)
+                            + _fmt_phrase_with_note("PEAK",    _p_peak,  _d_peak)
+                            + _fmt_phrase_with_note("RESOLVE", _p_res,   _d_res)
+                            + f"\nRegister: {_chosen_register.replace('_', ' ').upper()}"
+                            + _adlib_str
                         )
                         print(f"[LTX2-Qwen] Lyric register: {_chosen_register} | opening: {_p_open[:40]}")
                     except ImportError:
@@ -5618,6 +6041,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                         + _dna
                         + _emotion_colour
                         + _phrase_injection
+                        + "VOLUME IN PERFORMANCE: Metal, screamo, punk, diss, argument scenes — some lines SHOUTED. Write shouted lines in CAPS. Quiet lines lowercase. Never flat volume — contrast IS the energy. " 
                         + "\n\nABSOLUTELY FORBIDDEN: 'never let go', 'hold on tight', 'fading out', 'here with you', "
                         "'in the darkness', 'lost without you', 'always and forever', 'feel the rhythm'. "
                         "These are the lyrics of a placeholder. Write something true to THIS genre and THIS moment."
@@ -5715,7 +6139,9 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                     "\n\nNEVER write \'she sings a song\' or \'she begins to sing\' — "
                     "describe the actual sound, the actual words, the actual physical act."
                     + _singing_swear_note
-                    + "]"
+                                        + _fmt_adlib_injection(
+                        _get_adlibs(_chosen_register, _lyric_genre, seed, 4), "singing")
++ "]"
                 )
 
             elif _is_sex_scene:
@@ -5935,12 +6361,15 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                     "\n\nHOW TO USE THEM: Each line above is spoken MID-ACTION — never standalone, always embedded in a physical sentence. "
                     "Example format: 'Her hips slam down, [INSERT LINE HERE], her thighs shaking with the impact.' "
                     "The line arrives INSIDE the physical description, not before or after it. "
-                    "\n\nINTENSITY ARC: BUILD lines are breathless/quiet → PEAK lines are loud/breaking → RESOLVE is one breath or word. "
-                    "FORBIDDEN: clean coherent speech. FORBIDDEN: invented dialogue not from the list above. FORBIDDEN: 'she moans softly' alone. "
+                    "\n\nINTENSITY ARC: BUILD lines are breathless/quiet → PEAK lines are LOUD AND BREAKING — write screamed peaks in CAPS → RESOLVE drops to one breath or silence. VOLUME MUST VARY — never flat. "
+                    "VOLUME ARC — MANDATORY: vocal sounds are NOT all the same volume. ""BUILD = quiet, breathless, barely there. PEAK = LOUD, breaking, use CAPS for screams. ""RESOLVE = drops to almost nothing. The contrast between quiet BUILD and loud PEAK IS the scene. ""FORBIDDEN: flat even volume throughout. ""FORBIDDEN: clean coherent speech. FORBIDDEN: invented dialogue not from the list above. ""FORBIDDEN: 'she moans softly' alone. "
                     + _swear_injection_note
                     + _solo_toy_note
                     + _his_voice_note
-                    + _sx_roman + "]"
+                    + _sx_roman
+                    + _fmt_adlib_injection(
+                        _get_adlibs("raw_filth", "explicit", seed, 4), "explicit")
+                    + "]"
                 )
                 print(f"[LTX2-Qwen] Sex vocalisation: {_sx_position or 'generic'} | {_sx_lang} | {_sx_pool_src} | {_sx_moments} moments ({real_seconds:.0f}s clip)")
 
@@ -6186,7 +6615,14 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                         + _roman_note
                         + "Weave each line into a physical beat — a movement, a shift of weight, a held gaze. "
                         + _example_line
-                        + music_sound_rule + "]"
+                        + music_sound_rule                             + _fmt_adlib_injection(
+                                _get_adlibs("seduction", "explicit", seed, 3), "dialogue")
++ "]"
+                        + _fmt_adlib_injection(
+                            _get_adlibs(
+                                "raw_filth" if is_explicit else "seduction",
+                                "explicit" if is_explicit else "universal",
+                                seed, 3), "gravure")
                     )
             elif is_gravure:
                 # ── Sex scene vocalisation mode ───────────────────────────────────
@@ -6261,6 +6697,8 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                         + _sx_roman_note
                         + "FORBIDDEN: clean sentences, explanations, declarations, dialogue that could exist outside a sex scene. "
                         "FORBIDDEN: \'she moans softly\' alone — always attach the sound to physical cause and effect.] "
+                        + _fmt_adlib_injection(
+                            _get_adlibs("raw_filth", "explicit", seed, 4), "explicit")
                     )
                     print(f"[LTX2-Qwen] Sex vocalisation mode: {_sx_lang} | build/peak/resolve anchors set")
 
@@ -6506,7 +6944,9 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                         + _roman_note
                         + "Weave each line into a physical beat — a movement, a shift of weight, a held gaze. "
                         + _example_line
-                        + music_sound_rule + "]"
+                        + music_sound_rule                             + _fmt_adlib_injection(
+                                _get_adlibs("seduction", "explicit", seed, 3), "dialogue")
++ "]"
                     )
             else:
                 # ── General scene ─────────────────────────────────────────────
@@ -6812,7 +7252,9 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                     + " Dialogue MUST be grounded in what is visibly happening. "
                     "Do NOT invent backstory not in the user input. "
                     + _lang_addendum
-                    + music_sound_rule + "]"
+                    + music_sound_rule                         + _fmt_adlib_injection(
+                            _get_adlibs("seduction", "universal", seed, 3), "dialogue")
++ "]"
                 )
         else:
             dialogue_instruction = (
