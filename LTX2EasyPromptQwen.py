@@ -905,10 +905,10 @@ CRITICAL RULES:
 - TEXT AND LOGOS: readable text on signs, labels, or screens is unreliable. Do not ask for legible text in the frame.
 
 DIALOGUE — follow the DIALOGUE INSTRUCTION exactly. Use LTX-2.3's structured dialogue format: break speech into short phrases with acting directions between each line. Do NOT write long dialogue in one block. Invented dialogue MUST be grounded in what is visibly happening in the scene — do NOT invent backstory, history, relationships, or context not present in the user's input. A boxer training alone may grunt a short exertion sound; she may not deliver lines about her past.
-- Write a short spoken phrase in quotes
+- Write a short spoken phrase in quotes that exactly matches the one written by the user wrapped in quotes. Do not translate it into english.
 - Follow with a physical acting direction: "he pauses, glancing left", "her jaw tightens", "she exhales slowly"
 - Then the next phrase, then the next direction
-Example: "I remember after you came along..." He pauses, looking to the side. "Your mother..." His eyes widen slightly. "Said something I never quite understood," his voice dropping to almost nothing.
+Example: "我记得你来过之后。。。" He pauses, looking to the side. "你妈妈。。。" His eyes widen slightly. "说了一些我听不懂的事情" his voice dropping to almost nothing.
 No [DIALOGUE: ...] tags. No stage directions in brackets. If the character speaks a specific language or has an accent, state it: "speaks in Japanese", "with a thick Southern drawl", "in accented English".
 VOICE QUALITY — always describe HOW a character's voice sounds when they speak: pace, texture, register. "her voice barely above a breath", "a low gravelly rumble", "fast and clipped, each word landing hard", "slow and deliberate, each syllable weighted". Voice quality is as important as the words themselves.
 
@@ -2283,8 +2283,8 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                 "📁 local model path": ("STRING", {
                     "default": "",
                     "multiline": False,
-                    "placeholder": "Full path to Huihui-Qwen3.5-9B snapshot folder",
-                    "tooltip": "Optional. Paste the full path to your locally downloaded model snapshot folder. Leave blank to auto-download from HuggingFace on first run.",
+                    "placeholder": "Full path to snapshot folder OR direct path to a .gguf file",
+                    "tooltip": "Optional. Paste the full path to a local HuggingFace folder OR directly to a .gguf file to use llama.cpp. Leave blank to auto-download from HuggingFace.",
                 }),
                 "✈ offline mode": ("BOOLEAN", {
                     "default": False,
@@ -2310,6 +2310,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
     def __init__(self):
         self.tokenizer             = None
         self.model                 = None
+        self.is_gguf               = False
         self.loaded                = False
         self._stop_token_ids       = []
         self._last_portrait        = False
@@ -2362,6 +2363,32 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         else:
             print(f"[LTX2-Qwen] Local path: {source}")
 
+        # ── GGUF INTERCEPT ───────────────────────────────────────────────────
+        if source and source.lower().endswith(".gguf"):
+            try:
+                from llama_cpp import Llama
+            except ImportError:
+                raise ImportError("[LTX2-Qwen] Please install llama-cpp-python to use GGUF models: pip install llama-cpp-python")
+            
+            print(f"[LTX2-Qwen] Loading GGUF model: {source}")
+            self.model = Llama(
+                model_path=source,
+                n_gpu_layers=-1,  # Offload all layers to GPU
+                n_ctx=65536,       # Context window
+                chat_format="chatml",  # FORCE Qwen native format
+                chat_handler=None,
+                verbose=False
+            )
+            self.tokenizer = None
+            self.is_gguf = True
+            self.loaded = True
+            self._loaded_model_id = _active_model_id
+            print(f"[LTX2-Qwen] GGUF Ready: {source}")
+            return
+            
+        self.is_gguf = False
+        # 
+
         self.tokenizer = AutoTokenizer.from_pretrained(
             source, trust_remote_code=True, local_files_only=offline_mode
         )
@@ -2388,20 +2415,22 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
         if self.model is None:
             return
         print("[LTX2-Qwen] Unloading model...")
-        try:
-            for _n, module in list(self.model.named_modules()):
-                for _p, param in list(module.named_parameters(recurse=False)):
-                    try:
-                        param.data = torch.empty(0)
-                    except Exception:
-                        pass
-                for _b, buf in list(module.named_buffers(recurse=False)):
-                    try:
-                        module._buffers[_b] = None
-                    except Exception:
-                        pass
-        except Exception as e:
-            print(f"[LTX2-Qwen] Tensor destroy warning: {e}")
+        
+        if not getattr(self, "is_gguf", False):
+            try:
+                for _n, module in list(self.model.named_modules()):
+                    for _p, param in list(module.named_parameters(recurse=False)):
+                        try:
+                            param.data = torch.empty(0)
+                        except Exception:
+                            pass
+                    for _b, buf in list(module.named_buffers(recurse=False)):
+                        try:
+                            module._buffers[_b] = None
+                        except Exception:
+                            pass
+            except Exception as e:
+                print(f"[LTX2-Qwen] Tensor destroy warning: {e}")
 
         del self.model
         del self.tokenizer
@@ -2477,7 +2506,18 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
     @classmethod
     def _clean_output(cls, text: str) -> str:
         text = text.strip()
+        
+        # Remove standard XML think tags
         text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+        # 2. Handle plain-text reasoning blocks 
+        # Remove blocks that stop before the actual prompt (look for double newline)
+        text = re.sub(r"(?is)^(Thinking Process|Thought Process|Thinking|Thought):\s*.*?(?=\n\n[A-Z\[])", "", text).strip()
+        text = re.sub(r"(?is)^\*\*(Thinking Process|Thought Process|Thinking|Thought):\*\*.*?(?=\n\n[A-Z\[])", "", text).strip()
+        text = re.sub(r"(?is)^1\.\s+\*\*Analyze the Request:\*\*.*?(?=\n\n[A-Z\[])", "", text).strip()
+        
+        # If the thought process ran to the very end of the string (no final output generated)
+        if text.lower().startswith("thinking process:") or text.lower().startswith("thought process:"):
+            text = "" # Erase it so the fallback user_input catches it safely
         text = cls._PREAMBLE_RE.sub("", text).strip()
         text = cls._ROLE_BLEED_RE.sub("", text).strip()
         text = re.sub(r"\.(assistant|user|system|<\|[^|>]*\|>)\s*\n", ".\n", text, flags=re.IGNORECASE).strip()
@@ -4948,7 +4988,12 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
 
         # ── Assemble music sound rule ──────────────────────────────────────
         if has_music and _detected_entry:
-            _gbr, _gbm, _gins, _gen, _glocs, _gmv, _gcs, _gclothing = _detected_entry
+            # _gbr, _gbm, _gins, _gen, _glocs, _gmv, _gcs, _gclothing = _detected_entry
+            # Unpack the first 7 mandatory items
+            _gbr, _gbm, _gins, _gen, _glocs, _gmv, _gcs = _detected_entry[:7]
+
+            # Handle the 8th item (clothing) as an optional fallback
+            _gclothing = _detected_entry[7] if len(_detected_entry) > 7 else ""
 
             # BPM guidance
             if _resolved_bpm:
@@ -5147,8 +5192,8 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                 dialogue_instruction = (
                     f"\n\n[DIALOGUE INSTRUCTION — MANDATORY: "
                     f"The user has written {len(_user_quoted_lines)} line(s) of dialogue. "
-                    f"Translate ALL of them into {_uq_grv_lang} and deliver IN ORDER. "
-                    f"PRESERVE the exact meaning — do NOT substitute, paraphrase, or invent different content. "
+                    f"Keep ALL of them as they are and deliver IN ORDER. "
+                    f"PRESERVE the exact original form — do NOT translate, substitute, paraphrase, or invent different content. "
                     f"SCRIPT REQUIREMENT: Write in actual {_uq_script_name} characters — NOT romanisation only. "
                     f"PARENTHESES ARE FORBIDDEN: do NOT write romanisation in parentheses next to the dialogue — "
                     f"it renders as on-screen subtitles in the video. "
@@ -5156,7 +5201,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                     f"CORRECT: She whispers 「もっと近くで見て」, voice barely above silence. "
                     f"WRONG: She whispers 「もっと近くで見て」(Motto chikaku de mite). "
                     f"Each line is woven into a physical beat with acting direction.\n"
-                    f"LINES TO TRANSLATE IN ORDER:\n{_lines_formatted}\n"
+                    f"LINES TO PLACE IN ORDER:\n{_lines_formatted}\n"
                     f"{_invent_addendum}"
                     f"Never use [DIALOGUE: ...] tags.]"
                 )
@@ -5189,11 +5234,11 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
                 dialogue_instruction = (
                     f"\n\n[DIALOGUE INSTRUCTION — MANDATORY: "
                     f"The user has written {len(_user_quoted_lines)} line(s) of dialogue. "
-                    f"Translate ALL of them into {_uq_gen_lang} and deliver IN ORDER. "
-                    f"PRESERVE the exact meaning — do NOT substitute or invent different content. "
+                    f"Keep ALL of them as they are and deliver IN ORDER. "
+                    f"PRESERVE the exact original form — do NOT translate, substitute, paraphrase, or invent different content. "
                     f"{_uq_roman_note}"
                     f"Each line is woven into a physical beat with acting direction.\n"
-                    f"LINES TO TRANSLATE IN ORDER:\n{_lines_formatted}\n"
+                    f"LINES TO PLACE IN ORDER:\n{_lines_formatted}\n"
                     f"{_invent_addendum}"
                     f"Never use [DIALOGUE: ...] tags.]"
                 )
@@ -9029,88 +9074,121 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
             "Nothing removed that the user did describe.]"
         )
 
-        messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
-            {"role": "user",   "content": (
-                effective_input
-                + _user_input_anchor_open
-                + lora_instruction
-                + orientation_instruction
-                + _ratio_instruction
-                + _subject_count_instruction
-                + _camera_lock_instruction
-                + _negative_bias_instruction
-                + _audio_instruction
-                + _genre_world_instruction
-                + _env_pool_instruction
-                + _global_emotion_instruction
-                + _kpop_group_instruction
-                + _bg_instruction
-                + style_instruction
-                + portrait_instruction
-                + _gravure_body_override
-                + sequence_instruction
-                + static_instruction
-                + no_person_instruction
-                + multi_instruction
-                + _env_instruction
-                + explicit_instruction
-                + dialogue_instruction
-                + lift_instruction
-                + _exertion_instruction
-                + action_sequence_instruction
-                + length_instruction
-                + _user_input_anchor_close
-            )},
-        ]
+        user_content_str = (
+            effective_input
+            + _user_input_anchor_open
+            + lora_instruction
+            + orientation_instruction
+            + _ratio_instruction
+            + _subject_count_instruction
+            + _camera_lock_instruction
+            + _negative_bias_instruction
+            + _audio_instruction
+            + _genre_world_instruction
+            + _env_pool_instruction
+            + _global_emotion_instruction
+            + _kpop_group_instruction
+            + _bg_instruction
+            + style_instruction
+            + portrait_instruction
+            + _gravure_body_override
+            + sequence_instruction
+            + static_instruction
+            + no_person_instruction
+            + multi_instruction
+            + _env_instruction
+            + explicit_instruction
+            + dialogue_instruction
+            + lift_instruction
+            + _exertion_instruction
+            + action_sequence_instruction
+            + length_instruction
+            + _user_input_anchor_close
+        )
+
+        # ── Format message for Vision if image is provided ──────────────────
+        user_content = user_content_str
+
 
         # ── Tokenise ──────────────────────────────────────────────────────────
-        try:
-            raw = self.tokenizer.apply_chat_template(
-                messages, return_tensors="pt",
-                add_generation_prompt=True, enable_thinking=False
-            )
-        except TypeError:
-            # enable_thinking not supported by this tokenizer version — retry without it
-            print("[LTX2-Qwen] enable_thinking kwarg not supported — retrying without it")
-            raw = self.tokenizer.apply_chat_template(
-                messages, return_tensors="pt",
-                add_generation_prompt=True
-            )
-        if hasattr(raw, "input_ids"):
-            input_ids = raw.input_ids.to(self.model.device)
-        elif isinstance(raw, dict):
-            input_ids = raw["input_ids"].to(self.model.device)
-        elif isinstance(raw, list):
-            input_ids = torch.tensor([raw], dtype=torch.long).to(self.model.device)
-        else:
-            input_ids = raw.to(self.model.device)
-        input_length = input_ids.shape[1]
+        # ── Generate (GGUF or Transformers) ───────────────────────────────────
+        # Force the model to skip thinking blocks
+        system_prompt_final = self.SYSTEM_PROMPT
 
-        # ── Generate ──────────────────────────────────────────────────────────
-        try:
-            with torch.no_grad():
-                output_ids = self.model.generate(
-                    input_ids,
-                    max_new_tokens=max_tokens,
+        messages = [
+            {"role": "system", "content": system_prompt_final},
+            {"role": "user",   "content": user_content},
+        ]
+
+        # ── Generate (GGUF or Transformers) ───────────────────────────────────
+        if getattr(self, "is_gguf", False):
+            try:
+                # Chinese characters and formatting eat tokens faster than the standard math expects.
+                # Give GGUF a massive token ceiling. The node's Python string trimmer will cap it safely later.
+                gguf_max_tokens = max(4096, int(max_tokens * 3.5)) 
+
+                response = self.model.create_chat_completion(
+                    messages=messages,
+                    max_tokens=max_tokens,
                     temperature=temperature,
-                    do_sample=True,
-                    top_k=20,
                     top_p=0.82,
-                    min_p=0.0,
-                    repetition_penalty=1.05,
-                    use_cache=True,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    eos_token_id=self._stop_token_ids
+                    top_k=20,
+                    repeat_penalty=1.05,
+                    # stop=["<|im_end|>", "<|eot_id|>", "<|end_of_turn|>", "### Human", "[USER SCENE"]
                 )
-        except Exception as e:
-            print(f"[LTX2-Qwen] Generation error: {e}")
-            self.unload_model()
-            raise
+                print(response)
+                result = response["choices"][0]["message"]["content"].strip()
+                
+            except Exception as e:
+                print(f"[LTX2-Qwen] GGUF Generation error: {e}")
+                self.unload_model()
+                raise
+        else:
+            # ── Tokenise (Transformers) ───────────────────────────────────────
+            try:
+                raw = self.tokenizer.apply_chat_template(
+                    messages, return_tensors="pt",
+                    add_generation_prompt=True, enable_thinking=False
+                )
+            except TypeError:
+                print("[LTX2-Qwen] enable_thinking kwarg not supported — retrying without it")
+                raw = self.tokenizer.apply_chat_template(
+                    messages, return_tensors="pt",
+                    add_generation_prompt=True
+                )
+            if hasattr(raw, "input_ids"):
+                input_ids = raw.input_ids.to(self.model.device)
+            elif isinstance(raw, dict):
+                input_ids = raw["input_ids"].to(self.model.device)
+            elif isinstance(raw, list):
+                input_ids = torch.tensor([raw], dtype=torch.long).to(self.model.device)
+            else:
+                input_ids = raw.to(self.model.device)
+            input_length = input_ids.shape[1]
 
-        result = self.tokenizer.decode(output_ids[0][input_length:], skip_special_tokens=True).strip()
-        del output_ids, input_ids
-        gc.collect()
+            try:
+                with torch.no_grad():
+                    output_ids = self.model.generate(
+                        input_ids,
+                        max_new_tokens=max_tokens,
+                        temperature=temperature,
+                        do_sample=True,
+                        top_k=20,
+                        top_p=0.82,
+                        min_p=0.0,
+                        repetition_penalty=1.05,
+                        use_cache=True,
+                        pad_token_id=self.tokenizer.eos_token_id,
+                        eos_token_id=self._stop_token_ids
+                    )
+            except Exception as e:
+                print(f"[LTX2-Qwen] Generation error: {e}")
+                self.unload_model()
+                raise
+
+            result = self.tokenizer.decode(output_ids[0][input_length:], skip_special_tokens=True).strip()
+            del output_ids, input_ids
+            gc.collect()
 
         if not result or not result.strip():
             print("[LTX2-Qwen] Warning: empty generation — returning user input as fallback")
