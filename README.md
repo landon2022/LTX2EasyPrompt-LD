@@ -1,3 +1,7 @@
+This is a version that works with the GGUF model and without the need to upgrade the transformers to 5.3.0. It uses the llama-cpp for GGUF. With some some fixes and enhancements on prompting.
+这个版本增加了GGUF支持，速度更快。 作了一些bug修复和中文对话强化。不用升级transformers 到5.3.0。 但是需要安装llama-cpp. 
+https://github.com/JamePeng/llama-cpp-python
+
 <img width="1990" height="1076" alt="Screenshot 2026-03-17 220714" src="https://github.com/user-attachments/assets/3008f7a2-38e8-46bb-9dd3-3893a33b22f5" />
 <img width="1739" height="911" alt="Screenshot 2026-03-17 220917" src="https://github.com/user-attachments/assets/6a2cefae-2685-4121-aa5e-e26a221db160" />
 <img width="1707" height="785" alt="Screenshot 2026-03-17 220903" src="https://github.com/user-attachments/assets/804c1948-f75c-4518-ad94-7325b8fb1d92" />
