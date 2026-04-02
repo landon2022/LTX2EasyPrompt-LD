@@ -2374,7 +2374,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
             self.model = Llama(
                 model_path=source,
                 n_gpu_layers=-1,  # Offload all layers to GPU
-                n_ctx=65536,       # Context window
+                n_ctx=262144,       # Context window
                 chat_format="chatml",  # FORCE Qwen native format
                 chat_handler=None,
                 verbose=False
@@ -9125,11 +9125,11 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
             try:
                 # Chinese characters and formatting eat tokens faster than the standard math expects.
                 # Give GGUF a massive token ceiling. The node's Python string trimmer will cap it safely later.
-                gguf_max_tokens = max(4096, int(max_tokens * 3.5)) 
-
+                gguf_max_tokens = max(700, int(max_tokens * 3.5)) 
+    
                 response = self.model.create_chat_completion(
                     messages=messages,
-                    max_tokens=max_tokens,
+                    max_tokens=gguf_max_tokens,
                     temperature=temperature,
                     top_p=0.82,
                     top_k=20,
