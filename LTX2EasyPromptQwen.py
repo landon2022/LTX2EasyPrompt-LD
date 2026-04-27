@@ -2374,7 +2374,7 @@ Output ONLY the prompt. No preamble, no "Sure!", no "Here's your prompt:", no co
             self.model = Llama(
                 model_path=source,
                 n_gpu_layers=-1,  # Offload all layers to GPU
-                n_ctx=262144,       # Context window
+                n_ctx=65535,       # Context window
                 chat_format="chatml",  # FORCE Qwen native format
                 chat_handler=None,
                 verbose=False
